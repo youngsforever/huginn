@@ -23,6 +23,8 @@ module Agents
 
       List the names of folders to check in `folders`.
 
+      If checking many folders or processing many messages can exceed the background job runtime limit, increase the installation-wide `DELAYED_JOB_MAX_RUNTIME` environment variable (in minutes, default: 2).  The limit applies to the whole job, not to each folder or message.  Individual network timeouts still apply.
+
       Specify an array of MIME types in 'mime_types' to tell which non-attachment part of a mail among its `text/*` parts should be used as mail body.  The default value is `['text/plain', 'text/enriched', 'text/html']`.
 
       To narrow mails by conditions, build a `conditions` hash with the following keys:
@@ -132,7 +134,7 @@ module Agents
       end
 
       %w[ssl mark_as_read delete include_raw_mail].each { |key|
-        if options[key].present? && boolify(options[key]).nil?
+        if option_provided?(options[key]) && boolify(options[key]).nil?
           errors.add(:base, '%s must be a boolean value' % key)
         end
       }
@@ -352,7 +354,7 @@ module Agents
       port = (Integer(port) if port.present?)
 
       log "Connecting to #{host}#{':%d' % port if port}#{' via SSL' if ssl}"
-      Client.open(host, port:, ssl:) { |imap|
+      Client.open(host, port:, ssl:, open_timeout: NetworkTimeout.open_timeout) { |imap|
         log "Logging in as #{username}"
         if service
           imap.authenticate('XOAUTH2', username, password)
@@ -505,6 +507,12 @@ module Agents
         uid_fetch(set, 'RFC822.HEADER').map { |data|
           Message.new(self, data, folder: @folder, uidvalidity: @uidvalidity)
         }
+      end
+
+      private
+
+      def send_command(...)
+        NetworkTimeout.within { super }
       end
     end
 

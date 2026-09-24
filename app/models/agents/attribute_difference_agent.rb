@@ -7,6 +7,8 @@ module Agents
       the difference or change of a specific attribute in comparison to the previous
       event received.
 
+      JSONPath expressions use RFC 9535.  Set `use_legacy_jsonpath` to `true` to retain legacy JSONPath syntax and behavior.
+
       `path` specifies the JSON path of the attribute to be used from the event.
 
       `output` specifies the new attribute name that will be created on the original payload
@@ -36,7 +38,7 @@ module Agents
 
     def default_options
       {
-        'path' => '.data.rate',
+        'path' => '$.data.rate',
         'output' => 'rate_diff',
         'method' => 'integer_difference',
         'expected_update_period_in_days' => 1
@@ -63,7 +65,7 @@ module Agents
 
     def handle(opts, event)
       opts['decimal_precision'] ||= 3
-      attribute_value = Utils.value_at(event.payload, opts['path'])
+      attribute_value = value_at(event.payload, opts['path'])
       attribute_value = attribute_value.nil? ? 0 : attribute_value
       payload = event.payload.deep_dup
 

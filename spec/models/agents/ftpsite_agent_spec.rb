@@ -103,14 +103,14 @@ describe Agents::FtpsiteAgent do
           ])
         }
 
-        expect(Event.last(2).first.payload).to eq({
-          'file_pointer' => { 'file' => 'example-1.1.tar.gz', 'agent_id' => @checker.id },
+        expect_file_pointer_event(Event.last(2).first, {
+          'file' => 'example-1.1.tar.gz',
           'url' => 'ftp://ftp.example.org/pub/releases/example-1.1.tar.gz',
           'filename' => 'example-1.1.tar.gz',
           'timestamp' => '2014-04-01T10:00:00Z',
         })
 
-        expect { @checker.check }.not_to change { Event.count }
+        expect { @checker.check }.not_to(change { Event.count })
 
         allow(@checker).to receive(:each_entry) { |&block|
           block.call("example latest.tar.gz", Time.parse("2014-04-02T10:00:01Z"))
@@ -133,21 +133,21 @@ describe Agents::FtpsiteAgent do
           ])
         }
 
-        expect(Event.last(2).first.payload).to eq({
-          'file_pointer' => { 'file' => 'example-1.2.tar.gz', 'agent_id' => @checker.id },
+        expect_file_pointer_event(Event.last(2).first, {
+          'file' => 'example-1.2.tar.gz',
           'url' => 'ftp://ftp.example.org/pub/releases/example-1.2.tar.gz',
           'filename' => 'example-1.2.tar.gz',
           'timestamp' => '2014-04-02T10:00:00Z',
         })
 
-        expect(Event.last.payload).to eq({
-          'file_pointer' => { 'file' => 'example latest.tar.gz', 'agent_id' => @checker.id },
+        expect_file_pointer_event(Event.last, {
+          'file' => 'example latest.tar.gz',
           'url' => 'ftp://ftp.example.org/pub/releases/example%20latest.tar.gz',
           'filename' => 'example latest.tar.gz',
           'timestamp' => '2014-04-02T10:00:01Z',
         })
 
-        expect { @checker.check }.not_to change { Event.count }
+        expect { @checker.check }.not_to(change { Event.count })
       end
     end
 
@@ -185,6 +185,22 @@ describe Agents::FtpsiteAgent do
         allow(@ftp_mock).to receive(:connect).with('ftp.example.org', 21)
         allow(@ftp_mock).to receive(:passive=).with(true)
         allow(Net::FTP).to receive(:new) { @ftp_mock }
+      end
+
+      it "passes connection options separately from the host" do
+        expect(Net::FTP).to receive(:new).with(nil, anything).and_return(@ftp_mock)
+        expect(@ftp_mock).to receive(:login).with("anonymous", "anonymous@")
+        expect(@ftp_mock).to receive(:chdir).with("pub/releases")
+
+        @checker.open_ftp(@checker.base_uri) do |ftp|
+          expect(ftp).to eq(@ftp_mock)
+        end
+      end
+
+      it "preserves errors raised before the FTP connection is created" do
+        allow(Net::FTP).to receive(:new).and_raise(ArgumentError, "invalid FTP options")
+
+        expect { @checker.open_ftp(@checker.base_uri) }.to raise_error(ArgumentError, "invalid FTP options")
       end
 
       context 'with_path' do
@@ -257,5 +273,14 @@ describe Agents::FtpsiteAgent do
         @checker.receive([event])
       end
     end
+  end
+
+  def expect_file_pointer_event(event, payload)
+    expect(event.payload).to include(payload.except('file'))
+    expect(event.payload['file_pointer']).to include(
+      'file' => payload['file'],
+      'agent_id' => @checker.id
+    )
+    expect(event.payload['file_pointer']['signature']).to be_present
   end
 end

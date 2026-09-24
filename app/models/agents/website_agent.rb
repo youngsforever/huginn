@@ -17,9 +17,13 @@ module Agents
     description <<~MD
       The Website Agent scrapes a website, XML document, or JSON feed and creates Events based on the results.
 
+      JSONPath expressions use RFC 9535.  Set `use_legacy_jsonpath` to `true` to retain legacy JSONPath syntax and behavior.
+
       Specify a `url` and select a `mode` for when to create Events based on the scraped data, either `all`, `on_change`, or `merge` (if fetching based on an Event, see below).
 
       The `url` option can be a single url, or an array of urls (for example, for multiple pages with the exact same structure but different content to scrape).
+
+      If fetching and processing all URLs in one background job can exceed the runtime limit, increase the installation-wide `DELAYED_JOB_MAX_RUNTIME` environment variable (in minutes, default: 2).  The limit applies to the whole job, not to each URL.  Individual network request timeouts still apply.
 
       The WebsiteAgent can also scrape based on incoming events.
 
@@ -68,7 +72,7 @@ module Agents
 
       # Scraping JSON
 
-      When parsing JSON, these sub-hashes specify [JSONPaths](http://goessner.net/articles/JsonPath/) to the values that you care about.
+      When parsing JSON, these sub-hashes specify [JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html) to the values that you care about.
 
       Sample incoming event:
 
@@ -96,8 +100,8 @@ module Agents
       Sample rule:
 
           "extract": {
-            "title": { "path": "results.data[*].title" },
-            "description": { "path": "results.data[*].description" }
+            "title": { "path": "$.results.data[*].title" },
+            "description": { "path": "$.results.data[*].description" }
           }
 
       In this example the `*` wildcard character makes the parser to iterate through all items of the `data` array. Three events will be created as a result.
@@ -528,8 +532,7 @@ module Agents
     def store_payload!(old_events, result)
       case interpolated['mode'].presence
       when 'on_change'
-        result_json = result.to_json
-        if found = old_events.find { |event| event.payload.to_json == result_json }
+        if found = old_events.find { |event| Utils.same_json?(event.payload, result) }
           found.update!(expires_at: new_event_expiration_date)
           false
         else
@@ -608,7 +611,7 @@ module Agents
     def extract_json(doc)
       extract_each { |extraction_details, values|
         log "Extracting #{extraction_type} at #{extraction_details['path']}"
-        Utils.values_at(doc, extraction_details['path']).each { |value|
+        values_at(doc, extraction_details['path']).each { |value|
           values << value
         }
       }

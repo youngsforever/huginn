@@ -18,13 +18,15 @@ module Agents
     description <<~MD
       The Trigger Agent will watch for a specific value in an Event payload.
 
+      JSONPath expressions use RFC 9535.  Set `use_legacy_jsonpath` to `true` to retain legacy JSONPath syntax and behavior.
+
       The `rules` array contains a mixture of strings and hashes.
 
       A string rule is a Liquid template and counts as a match when it expands to `true`.
 
       A hash rule consists of the following keys: `path`, `value`, and `type`.
 
-      The `path` value is a dotted path through a hash in [JSONPaths](http://goessner.net/articles/JsonPath/) syntax. For simple events, this is usually just the name of the field you want, like 'text' for the text key of the event.
+      The `path` value selects a field using [JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html) syntax.  Start paths with `$`, for example `$.text` for the text key of the event.
 
       The `type` can be one of #{VALID_COMPARISON_TYPES.map { |t| "`#{t}`" }.to_sentence} and compares with the `value`.  Note that regex patterns are matched case insensitively.  If you want case sensitive matching, prefix your pattern with `(?-i)`.
 
@@ -70,12 +72,10 @@ module Agents
       end
 
       errors.add(:base,
-                 "message is required unless 'keep_event' is 'true'") unless options['message'].present? || keep_event?
+                 "message is required unless keep_event is true") unless options['message'].present? || keep_event?
 
       errors.add(:base,
-                 "keep_event, when present, must be 'true' or 'false'") unless options['keep_event'].blank? || %w[
-                   true false
-                 ].include?(options['keep_event'])
+                 "keep_event, when present, must be a boolean value") unless !option_provided?(options['keep_event']) || !boolify(options['keep_event']).nil?
 
       if options['must_match'].present?
         if options['must_match'].to_i < 1
@@ -88,12 +88,12 @@ module Agents
 
     def default_options
       {
-        'expected_receive_period_in_days' => "2",
-        'keep_event' => 'false',
+        'expected_receive_period_in_days' => 2,
+        'keep_event' => false,
         'rules' => [{
           'type' => "regex",
           'value' => "foo\\d+bar",
-          'path' => "topkey.subkey.subkey.goal",
+          'path' => "$.topkey.subkey.subkey.goal",
         }],
         'message' => "Looks like your pattern matched in '{{value}}'!"
       }
@@ -112,7 +112,7 @@ module Agents
             next boolify(rule)
           end
 
-          value_at_path = Utils.value_at(event['payload'], rule['path'])
+          value_at_path = value_at(event['payload'], rule['path'])
           rule_values = rule['value']
           rule_values = [rule_values] unless rule_values.is_a?(Array)
 

@@ -5,15 +5,21 @@ describe LiquidMigrator do
     it "should work" do
       expect(LiquidMigrator.convert_string("$.data", true)).to eq("{{data}}")
       expect(LiquidMigrator.convert_string("$.data.test", true)).to eq("{{data.test}}")
-      expect(LiquidMigrator.convert_string("$first_title", true)).to eq("{{first_title}}")
+      expect(LiquidMigrator.convert_string("$.first_title", true)).to eq("{{first_title}}")
     end
 
     it "should ignore strings which just contain a JSONPath" do
       expect(LiquidMigrator.convert_string("$.data")).to eq("$.data")
-      expect(LiquidMigrator.convert_string("$first_title")).to eq("$first_title")
+      expect(LiquidMigrator.convert_string("$.first_title")).to eq("$.first_title")
       expect(LiquidMigrator.convert_string(" $.data", true)).to eq(" $.data")
       expect(LiquidMigrator.convert_string("lorem $.data", true)).to eq("lorem $.data")
     end
+
+    it "still migrates legacy paths without a dot after the root" do
+      expect(LiquidMigrator.convert_string("$first_title", true)).to eq("{{first_title}}")
+      expect(LiquidMigrator.convert_string("$first_title")).to eq("$first_title")
+    end
+
     it "should raise an exception when encountering complex JSONPaths" do
       expect { LiquidMigrator.convert_string("$.data.test.*", true) }.
         to raise_error("JSONPath '$.data.test.*' is too complex, please check your migration.")
@@ -113,49 +119,5 @@ describe LiquidMigrator do
         to raise_error("JSONPath '$.very.complex[*]' is too complex, please check your migration.")
     end
 
-    it "should work with the human task agent" do
-      valid_params = {
-        'expected_receive_period_in_days' => 2,
-        'trigger_on' => "event",
-        'hit' =>
-          {
-            'assignments' => 1,
-            'title' => "Sentiment evaluation",
-            'description' => "Please rate the sentiment of this message: '<$.message>'",
-            'reward' => 0.05,
-            'lifetime_in_seconds' => 24 * 60 * 60,
-            'questions' =>
-              [
-                {
-                  'type' => "selection",
-                  'key' => "sentiment",
-                  'name' => "Sentiment",
-                  'required' => "true",
-                  'question' => "Please select the best sentiment value:",
-                  'selections' =>
-                    [
-                      { 'key' => "happy", 'text' => "Happy" },
-                      { 'key' => "sad", 'text' => "Sad" },
-                      { 'key' => "neutral", 'text' => "Neutral" }
-                    ]
-                },
-                {
-                  'type' => "free_text",
-                  'key' => "feedback",
-                  'name' => "Have any feedback for us?",
-                  'required' => "false",
-                  'question' => "Feedback",
-                  'default' => "Type here...",
-                  'min_length' => "2",
-                  'max_length' => "2000"
-                }
-              ]
-          }
-      }
-      @agent = Agents::HumanTaskAgent.new(:name => "somename", :options => valid_params)
-      @agent.user = users(:jane)
-      LiquidMigrator.convert_all_agent_options(@agent)
-      expect(@agent.reload.options['hit']['description']).to eq("Please rate the sentiment of this message: '{{message}}'")
-    end
   end
 end

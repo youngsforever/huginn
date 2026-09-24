@@ -1,0 +1,27 @@
+#!/bin/bash -e
+#
+# Refuse MySQL 5.7 data: upgrading to 8.4 requires an intermediate 8.0 server.
+
+DATADIR="${1:-/var/lib/mysql}"
+
+# Detect the MySQL version from the redo log header.
+REDO_LOG="$DATADIR/ib_logfile0"
+
+if [ ! -f "$REDO_LOG" ]; then
+  exit 0
+fi
+
+mysql_version="$(dd if="$REDO_LOG" bs=1 skip=16 count=32 2> /dev/null | tr -d '\0[:space:]')"
+case "$mysql_version" in
+  MySQL5.7.*)
+    mysql_version="${mysql_version#MySQL}"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+echo "MySQL $mysql_version data requires an intermediate upgrade to MySQL 8.0 before 8.4." >&2
+echo "Back up the volume and start it with the previous MySQL 8.0 image first." >&2
+echo "See docker/multi-process/README.md for the upgrade procedure." >&2
+exit 1

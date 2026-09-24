@@ -117,7 +117,7 @@ describe Agents::WebsiteAgent do
 
           @checker.options['type'] = 'json'
           @checker.options['extract'] = {
-            'url' => { 'path' => 'bar' },
+            'url' => { 'path' => '$.bar' },
           }
           expect(@checker).to be_valid
         end
@@ -189,6 +189,30 @@ describe Agents::WebsiteAgent do
         }.to change { Event.count }.by(1)
       end
 
+      it "treats payloads with different key order as unchanged" do
+        existing_event = @checker.events.create!(
+          user: @checker.user,
+          payload: {
+            'hovertext' => "An unsafe quantity of analogies",
+            'title' => "Angular Momentum",
+            'url' => "//imgs.xkcd.com/comics/angular_momentum.png"
+          },
+          expires_at: 1.day.from_now
+        )
+
+        expect(
+          @checker.send(
+            :store_payload!,
+            [existing_event],
+            {
+              'url' => "//imgs.xkcd.com/comics/angular_momentum.png",
+              'title' => "Angular Momentum",
+              'hovertext' => "An unsafe quantity of analogies"
+            }
+          )
+        ).to be(false)
+      end
+
       it "should log an error if the number of results for a set of extraction patterns differs" do
         @valid_options['extract']['url']['css'] = "div"
         @checker.options = @valid_options
@@ -239,7 +263,7 @@ describe Agents::WebsiteAgent do
           'mode' => 'on_change',
           'http_success_codes' => [404],
           'extract' => {
-            'version' => { 'path' => 'response.version' },
+            'version' => { 'path' => '$.response.version' },
           },
           # no unzip option
         }
@@ -270,7 +294,7 @@ describe Agents::WebsiteAgent do
           'url' => "http://gzip.com",
           'mode' => 'on_change',
           'extract' => {
-            'version' => { 'path' => 'response.version' },
+            'version' => { 'path' => '$.response.version' },
           },
           # no unzip option
         }
@@ -299,7 +323,7 @@ describe Agents::WebsiteAgent do
           'url' => "http://gzip.com",
           'mode' => 'on_change',
           'extract' => {
-            'version' => { 'path' => 'response.version' },
+            'version' => { 'path' => '$.response.version' },
           },
           'unzip' => 'gzip',
         }
@@ -405,7 +429,7 @@ describe Agents::WebsiteAgent do
             super().merge(
               'type' => 'json',
               'extract' => {
-                'value' => { 'path' => 'value' }
+                'value' => { 'path' => '$.value' }
               }
             )
           end
@@ -585,7 +609,7 @@ describe Agents::WebsiteAgent do
             super().merge(
               'type' => 'json',
               'extract' => {
-                'value' => { 'path' => 'value' }
+                'value' => { 'path' => '$.value' }
               }
             )
           end
@@ -966,8 +990,8 @@ describe Agents::WebsiteAgent do
             'url' => "http://json-site.com",
             'mode' => 'on_change',
             'extract' => {
-              'version' => { 'path' => "response.version" },
-              'title' => { 'path' => "response.title" }
+              'version' => { 'path' => "$.response.version" },
+              'title' => { 'path' => "$.response.title" }
             }
           }
           checker = Agents::WebsiteAgent.new(name: "Weather Site", options: site)
@@ -1001,9 +1025,9 @@ describe Agents::WebsiteAgent do
             'url' => "http://json-site.com",
             'mode' => 'on_change',
             'extract' => {
-              'title' => { 'path' => "response.data[*].title" },
-              'version' => { 'path' => "response.data[*].version" },
-              'status' => { 'path' => "response.status", 'repeat' => true },
+              'title' => { 'path' => "$.response.data[*].title" },
+              'version' => { 'path' => "$.response.data[*].version" },
+              'status' => { 'path' => "$.response.status", 'repeat' => true },
             }
           }
           checker = Agents::WebsiteAgent.new(name: "Weather Site", options: site)
@@ -1266,8 +1290,8 @@ describe Agents::WebsiteAgent do
               'type' => 'json',
               'data_from_event' => '{{ some_object.some_data }}',
               'extract' => {
-                'value' => { 'path' => 'hello' },
-                'url' => { 'path' => 'href' },
+                'value' => { 'path' => '$.hello' },
+                'url' => { 'path' => '$.href' },
               },
               'template' => {
                 'value' => '{{ value }}',

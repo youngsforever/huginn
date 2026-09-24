@@ -6,8 +6,8 @@ describe Agents::PeakDetectorAgent do
         'name' => "my peak detector agent",
         'options' => {
           'expected_receive_period_in_days' => "2",
-          'group_by_path' => "filter",
-          'value_path' => "count",
+          'group_by_path' => "$.filter",
+          'value_path' => "$.count",
           'message' => "A peak was found",
           'min_events' => "4"
         }
@@ -83,7 +83,7 @@ describe Agents::PeakDetectorAgent do
       event = Event.new(payload: {count: ["not working"]})
       expect {
         @agent.receive([event])
-      }.to raise_error(NoMethodError, /undefined method `to_f'/)
+      }.to raise_error(NoMethodError, /undefined method 'to_f'/)
     end
   end
 

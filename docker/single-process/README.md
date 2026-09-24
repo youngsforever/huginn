@@ -30,12 +30,15 @@ If your database user does not have the permission to create the Huginn database
 
 This script will run database migrations (rake db:migrate) which should be idempotent.
 
+The Rails secret is taken from the environment variable ``APP_SECRET_TOKEN``.  If it is not set, a random one is generated when the container starts, which invalidates existing sessions whenever the container is recreated.  To keep sessions across restarts, set it to a random value of your own, e.g. the output of ``openssl rand -hex 64``.
+
 It will also seed the database (rake db:seed) unless this is defined:
 
     DO_NOT_SEED
 
-This same seeding initially defines the "admin" user with a default password of "password" as per the standard Huginn documentation.
-You can customize the admin account name with the environment variable ``SEED_USERNAME`` and ``SEED_PASSWORD``.
+This same seeding initially defines the "admin" user as per the standard Huginn documentation.
+You can customize the admin account name and password with the environment variables ``SEED_USERNAME`` and ``SEED_PASSWORD``.
+If ``SEED_PASSWORD`` is not set, a random password is generated and printed once in the container log; note it down.
 
 If you do not wish to have the default 6 agents, you will want to set the above environment variable after your initially deploy, otherwise they will be added automatically the next time a container pointing at the database is spun up.
 
@@ -48,6 +51,19 @@ Simple startup using docker compose (you need to daemonize with `-d` to persist 
     cd docker/single-process
     docker-compose up
 
+The Compose setup uses MySQL 8.4 LTS.  Before upgrading an existing MySQL 8.0 volume, back it up and run the [MySQL Upgrade Checker](https://dev.mysql.com/doc/mysql-shell/8.4/en/mysql-shell-utilities-upgrade.html).  Convert accounts used by Huginn or administrators using `mysql_native_password` to `caching_sha2_password` while 8.0 is still running; MySQL 8.4 disables the old plugin by default.  Then cleanly stop the old server:
+
+    cd docker/single-process
+    docker-compose stop web threaded
+    docker-compose exec mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "SET GLOBAL innodb_fast_shutdown = 0"'
+    docker-compose stop mysql
+    docker-compose pull mysql mysqldata
+    docker-compose up -d
+
+Run this while the old MySQL 8.0 container is still available.  MySQL 8.4 upgrades the data directory on startup.  To roll back, restore the backup into the previous 8.0 image; do not start 8.0 against an upgraded volume.
+
+MySQL 5.7 volumes must first be upgraded using `mysql:8.0`.  Set both `mysql` and `mysqldata` images to `mysql:8.0`, perform a clean shutdown of 5.7 with `innodb_fast_shutdown = 0`, and start 8.0 to complete that upgrade.  Then follow the 8.0-to-8.4 procedure above.  Never start 8.4 directly against a 5.7 volume.
+
 or if you like to use PostgreSQL:
 
     docker-compose -f postgresql.yml up
@@ -59,7 +75,7 @@ Manual startup and linking to a MySQL container:
         -e MYSQL_USER=huginn \
         -e MYSQL_PASSWORD=somethingsecret \
         -e MYSQL_ROOT_PASSWORD=somethingevenmoresecret \
-        mysql
+        mysql:8.4
 
     docker run --rm --name huginn_web \
         --link huginn_mysql:mysql \
@@ -85,6 +101,12 @@ or alternatively:
         -e DATABASE_PASSWORD=somethingsecret \
         -e WORKER_CMD='bin/threaded.rb' \
         ghcr.io/huginn/huginn-single-process
+
+## Restricting outbound requests
+
+Both images bundle [Smokescreen](https://github.com/stripe/smokescreen), an egress proxy that refuses connections to private, loopback and link-local addresses.  Set `ENABLE_SMOKESCREEN=true` to start it inside the container and route all outbound HTTP(S) requests made by Agents through it; `OUTBOUND_PROXY` is then set to `http://127.0.0.1:4750` automatically unless already configured.  Use this on instances where untrusted users can create Agents.  Internal services that Agents legitimately need can be allowed with `SMOKESCREEN_OPTS`, e.g. `SMOKESCREEN_OPTS=--allow-address=intranet.example.com:443`.  See [doc/manual/outbound-requests.md](../../doc/manual/outbound-requests.md) for details and limitations.
+
+On trusted-user instances, set `START_SMOKESCREEN=true` instead, leaving `ENABLE_SMOKESCREEN` and `OUTBOUND_PROXY` unset, to start Smokescreen without forcing its use.  This defaults `AGENT_PROXY` to `http://127.0.0.1:4750` unless already configured.  Supported Agents can opt in with `"use_agent_proxy": true`; other requests retain their normal routing.  This lets trusted users protect Agents that process event-derived URLs from unintended internal-resource access.  Set this on both web and worker containers.  `OUTBOUND_PROXY`, when set, always enforces its proxy regardless of these opt-in settings.
 
 ## Environment Variables
 

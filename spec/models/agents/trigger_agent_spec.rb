@@ -9,7 +9,7 @@ describe Agents::TriggerAgent do
         'rules' => [{
           'type' => "regex",
           'value' => "a\\db",
-          'path' => "foo.bar.baz",
+          'path' => "$.foo.bar.baz",
         }],
         'message' => "I saw '{{foo.bar.baz}}' from {{name}}"
       }
@@ -44,11 +44,23 @@ describe Agents::TriggerAgent do
       expect(@checker).to be_valid
     end
 
+    it "should also accept a boolean keep_event value" do
+      @checker.options['keep_event'] = true
+      @checker.options['message'] = ''
+      expect(@checker).to be_valid
+    end
+
     it "if present, 'keep_event' must equal true or false" do
       @checker.options['keep_event'] = 'true'
       expect(@checker).to be_valid
 
       @checker.options['keep_event'] = 'false'
+      expect(@checker).to be_valid
+
+      @checker.options['keep_event'] = true
+      expect(@checker).to be_valid
+
+      @checker.options['keep_event'] = false
       expect(@checker).to be_valid
 
       @checker.options['keep_event'] = ''
@@ -80,7 +92,7 @@ describe Agents::TriggerAgent do
     end
 
     it "should validate the three fields in each rule" do
-      @checker.options['rules'] << { 'path' => "foo", 'type' => "fake", 'value' => "6" }
+      @checker.options['rules'] << { 'path' => "$.foo", 'type' => "fake", 'value' => "6" }
       expect(@checker).not_to be_valid
       @checker.options['rules'].last['type'] = "field!=value"
       expect(@checker).to be_valid
@@ -138,7 +150,7 @@ describe Agents::TriggerAgent do
       @checker.options['rules'][0] = {
         'type' => "regex",
         'value' => ["a\\db", "a\\Wb"],
-        'path' => "foo.bar.baz",
+        'path' => "$.foo.bar.baz",
       }
       expect {
         @checker.receive([@event])
@@ -160,7 +172,7 @@ describe Agents::TriggerAgent do
       @checker.options['rules'][0] = {
         'type' => "!regex",
         'value' => "a\\db",
-        'path' => "foo.bar.baz",
+        'path' => "$.foo.bar.baz",
       }
 
       expect {
@@ -178,7 +190,7 @@ describe Agents::TriggerAgent do
       @checker.options['rules'][0] = {
         'type' => "!regex",
         'value' => ["a\\db", "a2b"],
-        'path' => "foo.bar.baz",
+        'path' => "$.foo.bar.baz",
       }
 
       expect {
@@ -310,16 +322,16 @@ describe Agents::TriggerAgent do
       }.to change { Event.count }.by(1)
     end
 
-    it "does fine without dots in the path" do
+    it "matches a top-level field" do
       @event.payload = { 'hello' => "world" }
       @checker.options['rules'].first['type'] = "field==value"
-      @checker.options['rules'].first['path'] = "hello"
+      @checker.options['rules'].first['path'] = "$.hello"
       @checker.options['rules'].first['value'] = "world"
       expect {
         @checker.receive([@event])
       }.to change { Event.count }.by(1)
 
-      @checker.options['rules'].first['path'] = "foo"
+      @checker.options['rules'].first['path'] = "$.foo"
       expect {
         @checker.receive([@event])
       }.not_to(change { Event.count })
@@ -371,7 +383,7 @@ describe Agents::TriggerAgent do
         @checker.options['rules'] << {
           'type' => "field>=value",
           'value' => "4",
-          'path' => "foo.bing"
+          'path' => "$.foo.bing"
         }
       end
 

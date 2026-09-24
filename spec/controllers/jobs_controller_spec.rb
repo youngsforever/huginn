@@ -17,13 +17,13 @@ describe JobsController do
 
     it "does not allow normal users" do
       expect(users(:bob)).not_to be_admin
-      sign_in users(:bob)
+      sign_in users(:bob), scope: :user
       expect(get(:index)).to redirect_to(root_path)
     end
 
     it "returns all jobs" do
       expect(users(:jane)).to be_admin
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
       get :index
       expect(assigns(:jobs).length).to eq(4)
     end
@@ -33,7 +33,7 @@ describe JobsController do
     before do
       @not_running = Delayed::Job.create
       @running = Delayed::Job.create(locked_at: Time.now, locked_by: 'test')
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
     end
 
     it "destroy a job which is not running" do
@@ -50,7 +50,7 @@ describe JobsController do
       @not_running = Delayed::Job.create(run_at: Time.now - 1.hour)
       @running = Delayed::Job.create(locked_at: Time.now, locked_by: 'test')
       @failed = Delayed::Job.create(run_at: Time.now - 1.hour, locked_at: Time.now, failed_at: Time.now)
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
     end
 
     it "queue a job which is not running" do
@@ -61,8 +61,18 @@ describe JobsController do
       expect { put :run, params: {id: @failed.id} }.to change { @failed.reload.run_at }
     end
 
+    it "clears a failed job's stale reservation and retry count" do
+      @failed.update!(locked_by: "dead worker", attempts: 5, last_error: "previous worker exited")
+
+      put :run, params: { id: @failed.id }
+
+      expect(@failed.reload).to have_attributes(
+        attempts: 0, failed_at: nil, last_error: nil, locked_at: nil, locked_by: nil
+      )
+    end
+
     it "not queue a running job" do
-      expect { put :run, params: {id: @running.id} }.not_to change { @not_running.reload.run_at }
+      expect { put :run, params: { id: @running.id } }.not_to(change { @running.reload.run_at })
     end
   end
 
@@ -71,7 +81,7 @@ describe JobsController do
       @failed = Delayed::Job.create(failed_at: Time.now - 1.minute)
       @running = Delayed::Job.create(locked_at: Time.now, locked_by: 'test')
       @pending = Delayed::Job.create
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
     end
 
     it "just destroy failed jobs" do
@@ -84,7 +94,7 @@ describe JobsController do
       @failed = Delayed::Job.create(failed_at: Time.now - 1.minute)
       @running = Delayed::Job.create(locked_at: Time.now, locked_by: 'test')
       @pending = Delayed::Job.create
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
     end
 
     it "destroys all jobs" do
@@ -97,7 +107,7 @@ describe JobsController do
     before do
       @not_running = Delayed::Job.create(run_at: Time.zone.now - 1.hour)
       @not_running.update_attribute(:attempts, 1)
-      sign_in users(:jane)
+      sign_in users(:jane), scope: :user
     end
 
     it "run the queued job" do

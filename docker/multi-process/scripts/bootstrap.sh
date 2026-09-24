@@ -3,6 +3,11 @@ source /tmp/.env
 
 echo DATABASE_HOST=${DATABASE_HOST}
 
+if [ "${ENABLE_SMOKESCREEN}" = "true" ] || [ "${START_SMOKESCREEN}" = "true" ]; then
+  echo "Starting Smokescreen egress proxy..."
+  supervisorctl start smokescreen >/dev/null
+fi
+
 # start mysql server if ${DATABASE_HOST} is the .env.example default
 if [ "${START_MYSQL}" = "true" ]; then
   if [ "${DATABASE_ADAPTER}" = "postgresql" ]; then
@@ -10,13 +15,16 @@ if [ "${START_MYSQL}" = "true" ]; then
     exit 1
   fi
 
+  # Reject unsupported upgrade paths before touching existing data.
+  /scripts/upgrade-mysql /var/lib/mysql
+
   # initialize MySQL data directory
   if [ ! -d /var/lib/mysql/mysql ]; then
     mysqld --initialize-insecure --user=$(whoami) --datadir=/tmp/mysql
     mv -f /tmp/mysql/* /var/lib/mysql/
   fi
 
-  echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DATABASE_PASSWORD}';" > /app/tmp/mysql_init.sql
+  echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '${DATABASE_PASSWORD}';" > /app/tmp/mysql_init.sql
 
   echo "Starting mysql server..."
   supervisorctl start mysqld >/dev/null
